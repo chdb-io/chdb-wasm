@@ -110,32 +110,51 @@
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
-    min-width: 260px;
-    max-width: min(72vw, 560px);
+    min-width: 320px;
+    max-width: min(78vw, 600px);
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 4px;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    border-radius: 10px;
+    padding: 6px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
   }
   .examples-menu.hide { display: none; }
+  .ex-group {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 9px 10px 3px;
+  }
+  .ex-group:first-child { padding-top: 4px; }
   button.example-item {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: flex-start;
     width: 100%;
     text-align: left;
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--text);
     background: transparent;
     border: 0;
-    border-radius: 6px;
-    padding: 7px 9px;
+    border-radius: 7px;
+    padding: 8px 10px;
     cursor: pointer;
+    transition: background 100ms ease;
+  }
+  button.example-item:hover, button.example-item:focus-visible { background: var(--sel); outline: none; }
+  .ex-title { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--text); }
+  button.example-item:hover .ex-title { color: var(--accent-text); }
+  .ex-sql {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  button.example-item:hover { background: var(--sel); color: var(--accent-text); }
 
   button.icon-btn {
     display: inline-flex;
@@ -670,21 +689,31 @@
     // ---------- Examples dropdown ----------
     // Click an item to drop the query into the prompt (it ends with ';', so Enter runs it).
     var EXAMPLES = [
-      "SELECT version();",
-      "SELECT number, number * number AS square FROM numbers(10);",
-      "SELECT * FROM url('https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_0.gz', 'TabSeparatedWithNames') LIMIT 10;",
-      "SELECT * FROM s3('https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_0.gz', NOSIGN, 'TabSeparatedWithNames') LIMIT 10;",
-      "SELECT * FROM url('https://datasets-documentation.s3.eu-west-3.amazonaws.com/house_parquet/house_0.parquet') LIMIT 10;"
+      { group: "Local", label: "Version", sql: "SELECT version();" },
+      { group: "Local", label: "Generated rows", sql: "SELECT number, number * number AS square FROM numbers(10);" },
+      { group: "Remote files", label: "TSV via url()", sql: "SELECT * FROM url('https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_0.gz', 'TabSeparatedWithNames') LIMIT 10;" },
+      { group: "Remote files", label: "TSV via s3()", sql: "SELECT * FROM s3('https://datasets-documentation.s3.eu-west-3.amazonaws.com/nyc-taxi/trips_0.gz', NOSIGN, 'TabSeparatedWithNames') LIMIT 10;" },
+      { group: "Remote files", label: "Parquet via url()", sql: "SELECT * FROM url('https://datasets-documentation.s3.eu-west-3.amazonaws.com/house_parquet/house_0.parquet') LIMIT 10;" }
     ];
     function openExamples() { examplesMenu.classList.remove("hide"); btnExamples.setAttribute("aria-expanded", "true"); }
     function closeExamples() { examplesMenu.classList.add("hide"); btnExamples.setAttribute("aria-expanded", "false"); }
-    EXAMPLES.forEach(function (sql) {
+    var exLastGroup = "";
+    EXAMPLES.forEach(function (ex) {
+      if (ex.group !== exLastGroup) {
+        var g = document.createElement("div");
+        g.className = "ex-group";
+        g.textContent = ex.group;
+        examplesMenu.appendChild(g);
+        exLastGroup = ex.group;
+      }
       var item = document.createElement("button");
       item.type = "button";
       item.className = "example-item";
-      item.textContent = sql;
-      item.title = sql;
-      item.addEventListener("click", function () { closeExamples(); fillInput(sql); });
+      item.title = ex.sql;
+      var t = document.createElement("span"); t.className = "ex-title"; t.textContent = ex.label;
+      var c = document.createElement("span"); c.className = "ex-sql"; c.textContent = ex.sql;
+      item.appendChild(t); item.appendChild(c);
+      item.addEventListener("click", function () { closeExamples(); fillInput(ex.sql); });
       examplesMenu.appendChild(item);
     });
     btnExamples.addEventListener("click", function (e) {
