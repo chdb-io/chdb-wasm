@@ -15,6 +15,6 @@
     "bundle": "bash scripts/build-cf-bundle.sh node_modules/chdb-wasm/dist web out"
   },
   "dependencies": {
-    "chdb-wasm": "^0.1.0"
+    "chdb-wasm": "latest"
   }
 }
