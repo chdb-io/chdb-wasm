@@ -1,0 +1,71 @@
+name: Deploy wasm shell to Cloudflare
+
+# Manual-only. This workflow NEVER runs automatically — not on push, pull_request,
+# merge, or tag. It runs only when triggered by hand (workflow_dispatch).
+#
+# It does NOT build the engine from source: the chdb-wasm engine (glue JS + the two
+# .wasm bundles) is pulled from the published `chdb-wasm` npm package. It then
+# assembles the browser shell (web page) + engine and deploys to Cloudflare: Pages
+# for the small files, R2 for the large .wasm.
+on:
+  workflow_dispatch:
+    inputs:
+      chdb_wasm_version:
+        description: 'chdb-wasm npm version to deploy (e.g. 0.1.0, or "latest")'
+        required: false
+        default: 'latest'
+      pages_project:
+        description: 'Cloudflare Pages project name (as created in the dashboard)'
+        required: false
+        default: 'chdb-shell'
+      r2_bucket:
+        description: 'Cloudflare R2 bucket name (holds the .wasm; bound to Pages as WASM_BUCKET)'
+        required: false
+        default: 'chdb-wasm'
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, ubuntu-latest]
+    timeout-minutes: 30
+    # Requires repo secrets (added by the Cloudflare account owner):
+    #   CLOUDFLARE_API_TOKEN  — Cloudflare Pages: Edit  +  Workers R2 Storage: Edit
+    #   CLOUDFLARE_ACCOUNT_ID — the Cloudflare account id
+    # The Pages project must already exist with an R2 binding named WASM_BUCKET and the
+    # custom domain (wasm.chdb.io) — these are configured once, in the dashboard.
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Fetch the chdb-wasm engine from npm
+        run: |
+          npm install --no-audit --no-fund --no-save "chdb-wasm@${{ inputs.chdb_wasm_version }}"
+          ls -la node_modules/chdb-wasm/dist/chdb.wasm node_modules/chdb-wasm/dist/st/chdb.wasm
+
+      - name: Assemble the Cloudflare bundle (pages/ + r2/)
+        run: bash scripts/build-cf-bundle.sh node_modules/chdb-wasm/dist web out
+
+      - name: Upload wasm to R2
+        run: |
+          set -eux
+          cd out/r2
+          find . -name '*.wasm' | sed 's#^\./##' | while read -r key; do
+            npx --yes wrangler r2 object put "${{ inputs.r2_bucket }}/$key" \
+              --file "$key" --content-type application/wasm --remote
+          done
+
+      - name: Deploy Pages
+        run: npx --yes wrangler pages deploy out/pages --project-name "${{ inputs.pages_project }}"
