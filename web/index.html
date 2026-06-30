@@ -594,9 +594,14 @@
       var progBlock = null, t0 = 0;
       var now = function () { return typeof performance !== "undefined" ? performance.now() : Date.now(); };
       function showProgress(p) {
-        if (!progBlock) { progBlock = document.createElement("div"); progBlock._line = makeLine("progress-line"); progBlock.appendChild(progBlock._line); appendBlock(progBlock); }
+        var atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+        if (!progBlock) { progBlock = document.createElement("div"); progBlock._line = makeLine("progress-line"); progBlock.appendChild(progBlock._line); scrollback.appendChild(progBlock); }
         // Engine per-tick elapsedNs is unset in this build, so time the rate from the wall clock.
-        progBlock._line.textContent = formatProgress(p, (now() - t0) / 1000); scrollToBottom();
+        progBlock._line.textContent = formatProgress(p, (now() - t0) / 1000);
+        // Stick to the bottom only if already there AND nothing is selected — otherwise the
+        // per-tick scroll would fight a drag-select (or yank a user who scrolled up to read).
+        var sel = window.getSelection && window.getSelection();
+        if (atBottom && (!sel || sel.isCollapsed)) scrollToBottom();
       }
       function clearProgress() { if (progBlock && progBlock.parentNode) progBlock.parentNode.removeChild(progBlock); progBlock = null; }
       try {
