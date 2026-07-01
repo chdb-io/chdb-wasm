@@ -25,11 +25,13 @@ WEB="${2:-web}"
 OUT="${3:-out}"
 JS="index.js worker.js async.js bindings.js protocol.js status.js platform.js"
 
-# Cache-busting dir name = the installed engine's version. npm versions are immutable, so
-# the version fully identifies the engine bytes: a new engine => new version => new dir =>
-# fresh fetch, with no stale-cache risk. Computed with node (always present in a Vercel
-# build) rather than md5sum, which the build image does not ship.
-VER="dist-$(node -pe "JSON.parse(require('fs').readFileSync('$(dirname "$DIST")/package.json','utf8')).version")"
+# Cache-busting dir name = a content hash of the mt engine files (glue + wasm), so any
+# engine change busts the immutable cache. Hashed with node (always present in the build)
+# instead of md5sum, which the Vercel build image doesn't ship — and, unlike reading a
+# version out of package.json, this works for any DIST dir passed in.
+ENGINE_FILES=()
+for f in $JS chdb.mjs chdb.wasm; do ENGINE_FILES+=("$DIST/$f"); done
+VER="dist-$(node -e 'const c=require("crypto"),fs=require("fs"),h=c.createHash("md5");for(const f of process.argv.slice(1))h.update(fs.readFileSync(f));process.stdout.write(h.digest("hex").slice(0,16))' "${ENGINE_FILES[@]}")"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/$VER"
