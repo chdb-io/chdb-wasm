@@ -4,7 +4,7 @@ The browser SQL shell behind **[wasm.chdb.io](https://wasm.chdb.io)** — chDB (
 compiled to WebAssembly) running fully in the browser. SQL executes on the client, with
 no backend.
 
-This repo is just the **web page + its Cloudflare deploy**. The engine itself (the
+This repo is just the **web page + its Vercel deploy**. The engine itself (the
 WebAssembly build, the glue JS, and the `.wasm`) lives in the
 [`chdb-wasm` npm package](https://www.npmjs.com/package/chdb-wasm) (built from
 [`chdb-io/chdb-core`](https://github.com/chdb-io/chdb-core)); this shell only *consumes*
@@ -12,14 +12,14 @@ it.
 
 ## Layout
 
-- `web/` — the static site: `index.html` (the shell), `_headers` (COOP/COEP + cache
-  rules), `_routes.json`, and `functions/[[path]].js` (a Pages Function that streams the
-  `.wasm` from R2). See `web/README.md`.
-- `scripts/build-cf-bundle.sh` — assembles the Cloudflare deploy bundle (`pages/` +
-  `r2/`) from an engine `dist/` and `web/`, content-hashing the engine dir for immutable
-  caching.
+- `web/index.html` — the shell. It references `./dist/...`; the build rewrites `./dist`
+  to a content-hashed `./dist-<hash>/` directory so the engine can be cached forever.
+- `vercel.json` — deploy config: COOP/COEP cross-origin-isolation headers (needed by the
+  multi-threaded build), immutable caching for the hashed engine dir, `no-cache` for the
+  page, plus the build command and output directory.
+- `scripts/build-vercel.sh` — assembles the deploy output (`out/`) from the installed
+  `chdb-wasm` engine + `web/`, content-hashing the engine dir.
 - `scripts/serve.mjs` — local preview server (sets COOP/COEP).
-- `.github/workflows/deploy.yml` — manual-only (`workflow_dispatch`) deploy to Cloudflare.
 
 ## Local preview
 
@@ -35,16 +35,24 @@ installed `chdb-wasm` package. To preview an unpublished local build instead, sy
 mkdir -p node_modules && ln -s /path/to/chdb-core/packages/chdb-wasm node_modules/chdb-wasm
 ```
 
-## Deploy
+## Deploy (Vercel)
 
-Manual only, via the **Deploy wasm shell to Cloudflare** workflow (Actions → Run
-workflow). It pulls a published `chdb-wasm` version from npm, assembles the bundle, puts
-the `.wasm` in R2, and deploys the rest to Pages. Inputs: `chdb_wasm_version`,
-`pages_project`, `r2_bucket`.
+Hosted on **Vercel** as a static site — no backend. Everything, including the ~100 MB
+`.wasm`, is served as a **same-origin static asset** straight from Vercel's CDN; Vercel has
+no per-file size limit, so there is no external object store or streaming function (unlike
+the old Cloudflare Pages + R2 setup). Serving the wasm same-origin also satisfies the
+COOP/COEP cross-origin isolation the multi-threaded build requires.
 
-One-time prerequisites (by the Cloudflare account owner):
+Deploys use Vercel's **Git integration**: pushes to `main` publish production, pull
+requests get preview URLs. On each build Vercel installs `chdb-wasm` (a dependency), then
+runs `scripts/build-vercel.sh` (the `buildCommand` in `vercel.json`) to emit `out/`.
 
-- Repo secrets `CLOUDFLARE_API_TOKEN` (Cloudflare Pages — Edit, Workers R2 Storage —
-  Edit) and `CLOUDFLARE_ACCOUNT_ID`.
-- An R2 bucket bound to the Pages project as `WASM_BUCKET`, and the `wasm.chdb.io`
-  custom domain.
+One-time setup (Vercel dashboard, on the **clickhouse** team):
+
+- Import this repo. Framework preset **Other**; the build command and output directory are
+  read from `vercel.json` (`bash scripts/build-vercel.sh` → `out/`).
+- Add the custom domain **`wasm.chdb.io`** and point its DNS at Vercel.
+- Plan: only the multi-threaded (mt) engine ships (~95 MB) — the page is always
+  cross-origin isolated, so the single-threaded fallback is never used. That fits Vercel's
+  static-upload limit on any plan. Serving the wasm counts toward Fast Data Transfer;
+  `immutable` caching means repeat visitors re-use the browser copy.

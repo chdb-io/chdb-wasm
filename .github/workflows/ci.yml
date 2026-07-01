@@ -29,7 +29,7 @@ jobs:
       - name: Lint scripts (+ workflow YAML if pyyaml is present)
         run: |
           set -eux
-          bash -n scripts/build-cf-bundle.sh
+          bash -n scripts/build-vercel.sh
           node --check scripts/serve.mjs
           if command -v python3 >/dev/null && python3 -c "import yaml" 2>/dev/null; then
             for f in .github/workflows/*.yml; do
@@ -39,24 +39,22 @@ jobs:
             echo "pyyaml not available; skipping workflow YAML lint"
           fi
 
-      - name: Assemble the Cloudflare bundle from the published engine
+      - name: Assemble the Vercel output from the published engine
         run: |
           set -eux
           # Pull the engine the same way the deploy does. If chdb-wasm is not on npm
           # yet, warn and skip the assembly check (the lint above still gates the PR).
           if npm install --no-audit --no-fund --no-save chdb-wasm@latest 2>/tmp/npm_err; then
-            VER=$(bash scripts/build-cf-bundle.sh node_modules/chdb-wasm/dist web out)
+            VER=$(bash scripts/build-vercel.sh node_modules/chdb-wasm/dist web out)
             echo "assembled $VER"
-            # the page, the glue, and both wasm bundles must all be present
-            test -f "out/pages/index.html"
-            test -f "out/pages/$VER/index.js"
-            test -f "out/pages/$VER/chdb.mjs"
-            test -f "out/pages/$VER/st/chdb.mjs"
-            test -f "out/r2/$VER/chdb.wasm"
-            test -f "out/r2/$VER/st/chdb.wasm"
+            # the page, the glue, and the mt wasm must all be present in the output
+            test -f "out/index.html"
+            test -f "out/$VER/index.js"
+            test -f "out/$VER/chdb.mjs"
+            test -f "out/$VER/chdb.wasm"
             # index.html must have been rewritten to the hashed engine dir
-            grep -q "$VER" out/pages/index.html
-            ! grep -qF "from './dist/index.js'" out/pages/index.html
+            grep -q "$VER" out/index.html
+            ! grep -qF "from './dist/index.js'" out/index.html
             rm -rf out
           else
             echo "::warning::chdb-wasm is not published to npm yet — skipping bundle assembly check. Publish it from chdb-core to enable this."

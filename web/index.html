@@ -501,8 +501,6 @@
       if (sr > 0) txt += " Processed " + fmtQty(sr) + " rows, " + fmtBytes(sb) +
                          " (" + fmtQty(el > 0 ? sr / el : 0) + " rows/s., " + fmtBytes(el > 0 ? sb / el : 0) + "/s.)";
       var line = makeLine("muted-line"); line.textContent = txt; frag.appendChild(line);
-      var pm = (res && res.peakMemoryUsage) || 0;
-      if (pm > 0) { var m = makeLine("muted-line"); m.textContent = "Peak memory usage: " + fmtBytesBin(pm) + "."; frag.appendChild(m); }
       return frag;
     }
 

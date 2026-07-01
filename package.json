@@ -12,9 +12,9 @@
   "homepage": "https://wasm.chdb.io",
   "scripts": {
     "serve": "node scripts/serve.mjs",
-    "bundle": "bash scripts/build-cf-bundle.sh node_modules/chdb-wasm/dist web out"
+    "build": "bash scripts/build-vercel.sh node_modules/chdb-wasm/dist web out"
   },
   "dependencies": {
-    "chdb-wasm": "latest"
+    "chdb-wasm": "0.2.0"
   }
 }
