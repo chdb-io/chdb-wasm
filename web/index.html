@@ -581,7 +581,10 @@
       var s = "↑ Progress: " + fmtQty(p.readRows) + " rows, " + fmtBytes(p.readBytes) +
               " (" + fmtQty(secs > 0 ? p.readRows / secs : 0) + " rows/s., " + fmtBytes(secs > 0 ? p.readBytes / secs : 0) + "/s.)";
       if (p.memoryUsage) s += " (" + fmtBytesBin(p.memoryUsage) + " RAM)";
-      if (p.totalRowsToRead > 0) { var pct = Math.min(100, p.readRows / p.totalRowsToRead * 100); s += "  " + progressBar(pct) + " " + pct.toFixed(0) + "%"; }
+      // Cap at 99% while running: for remote sources (url/s3), readRows can hit
+      // totalRowsToRead long before the download/decompress finishes, so a 100% bar would
+      // sit there "done" for seconds. The result appearing (progress line removed) is 100%.
+      if (p.totalRowsToRead > 0) { var pct = Math.min(99, p.readRows / p.totalRowsToRead * 100); s += "  " + progressBar(pct) + " " + pct.toFixed(0) + "%"; }
       return s;
     }
     async function executeSql(buffer) {
