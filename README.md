@@ -52,6 +52,7 @@ One-time setup (Vercel dashboard, on the **clickhouse** team):
 - Import this repo. Framework preset **Other**; the build command and output directory are
   read from `vercel.json` (`bash scripts/build-vercel.sh` → `out/`).
 - Add the custom domain **`wasm.chdb.io`** and point its DNS at Vercel.
-- Plan: the two wasm bundles total ~190 MB, which fits the **Pro** static-upload limit
-  (1 GB) but not **Hobby** (100 MB). Note that serving the wasm counts toward Vercel's Fast
-  Data Transfer; `immutable` caching means repeat visitors re-use the browser copy.
+- Plan: only the multi-threaded (mt) engine ships (~95 MB) — the page is always
+  cross-origin isolated, so the single-threaded fallback is never used. That fits Vercel's
+  static-upload limit on any plan. Serving the wasm counts toward Fast Data Transfer;
+  `immutable` caching means repeat visitors re-use the browser copy.

@@ -47,13 +47,11 @@ jobs:
           if npm install --no-audit --no-fund --no-save chdb-wasm@latest 2>/tmp/npm_err; then
             VER=$(bash scripts/build-vercel.sh node_modules/chdb-wasm/dist web out)
             echo "assembled $VER"
-            # the page, the glue, and both wasm bundles must all be present in the output
+            # the page, the glue, and the mt wasm must all be present in the output
             test -f "out/index.html"
             test -f "out/$VER/index.js"
             test -f "out/$VER/chdb.mjs"
             test -f "out/$VER/chdb.wasm"
-            test -f "out/$VER/st/chdb.mjs"
-            test -f "out/$VER/st/chdb.wasm"
             # index.html must have been rewritten to the hashed engine dir
             grep -q "$VER" out/index.html
             ! grep -qF "from './dist/index.js'" out/index.html

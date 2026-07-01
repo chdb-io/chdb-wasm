@@ -10,8 +10,10 @@ CDN as static assets.
   (`scripts/build-vercel.sh`) rewrites `./dist` to a content-hashed `./dist-<hash>/`
   directory so it can be cached forever.
 
-The engine files (the glue JS and the two `.wasm` bundles) are NOT committed here. They
-come from the `chdb-wasm` npm package and are assembled into the deploy at build time.
+The engine files (the glue JS and the `.wasm`) are NOT committed here. They come from the
+`chdb-wasm` npm package and are assembled into the deploy at build time. Only the
+multi-threaded (mt) bundle ships — the page is always cross-origin isolated, so the
+single-threaded fallback is never requested.
 
 Cross-origin isolation (COOP/COEP) and caching (immutable engine dir + `no-cache` page)
 are configured in the repo-root `vercel.json`. Unlike the previous Cloudflare setup, the
