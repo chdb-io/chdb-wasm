@@ -600,7 +600,7 @@
       if (!stmts.length) return;
       busy = true; cancelled = false;
       var SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-      var progBlock = null, t0 = 0, lastP = null, lastRateSecs = 0, spin = 0, timer = null, barPct = null;
+      var progBlock = null, t0 = 0, lastP = null, lastRateSecs = 0, spin = 0, timer = null, barPct = null, maxRows = 0, maxBytes = 0, maxMem = 0;
       var now = function () { return typeof performance !== "undefined" ? performance.now() : Date.now(); };
       // Repaint on a timer, not only on engine ticks: some queries (e.g. a remote download)
       // emit one tick then go quiet, which would freeze the line. The timer advances a spinner
@@ -617,12 +617,23 @@
         var sel = window.getSelection && window.getSelection();
         if (atBottom && (!sel || sel.isCollapsed)) scrollToBottom();
       }
-      function showProgress(p) { lastP = p; lastRateSecs = (now() - t0) / 1000; if (p.totalRowsToRead > 0) { var pc = Math.min(99, p.readRows / p.totalRowsToRead * 100); if (barPct === null || pc > barPct) barPct = pc; } paint(); }
+      function showProgress(p) {
+        // Counters are monotonic in the UI: some queries report values then reset (e.g. a
+        // schema-inference phase, then the main read restarts at 0), which would look like the
+        // progress running backwards. Display the max seen so the numbers never decrease.
+        maxRows = Math.max(maxRows, p.readRows || 0);
+        maxBytes = Math.max(maxBytes, p.readBytes || 0);
+        maxMem = Math.max(maxMem, p.memoryUsage || 0);
+        lastP = { readRows: maxRows, readBytes: maxBytes, memoryUsage: maxMem };
+        lastRateSecs = (now() - t0) / 1000;
+        if (p.totalRowsToRead > 0) { var pc = Math.min(99, p.readRows / p.totalRowsToRead * 100); if (barPct === null || pc > barPct) barPct = pc; }
+        paint();
+      }
       function clearProgress() { if (timer) { clearInterval(timer); timer = null; } if (progBlock && progBlock.parentNode) progBlock.parentNode.removeChild(progBlock); progBlock = null; lastP = null; }
       try {
         for (var i = 0; i < stmts.length; i++) {
           var isLast = (i === stmts.length - 1);
-          t0 = now(); lastP = null; lastRateSecs = 0; spin = 0; barPct = null; timer = setInterval(paint, 100);
+          t0 = now(); lastP = null; lastRateSecs = 0; spin = 0; barPct = null; maxRows = 0; maxBytes = 0; maxMem = 0; timer = setInterval(paint, 100);
           var res = await conn.query(stmts[i], isLast ? "PrettyCompact" : "Null", { onProgress: showProgress });
           clearProgress();
           if (isLast) appendResult(res, stmts[i]);
