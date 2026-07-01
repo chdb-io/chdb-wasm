@@ -29,9 +29,9 @@ JS="index.js worker.js async.js bindings.js protocol.js status.js platform.js"
 # engine change busts the immutable cache. Hashed with node (always present in the build)
 # instead of md5sum, which the Vercel build image doesn't ship — and, unlike reading a
 # version out of package.json, this works for any DIST dir passed in.
-ENGINE_FILES=""
-for f in $JS chdb.mjs chdb.wasm; do ENGINE_FILES="$ENGINE_FILES $DIST/$f"; done
-VER="dist-$(node -e 'const c=require("crypto"),fs=require("fs"),h=c.createHash("md5");for(const f of process.argv.slice(1))h.update(fs.readFileSync(f));process.stdout.write(h.digest("hex").slice(0,16))' $ENGINE_FILES)"
+ENGINE_FILES=()
+for f in $JS chdb.mjs chdb.wasm; do ENGINE_FILES+=("$DIST/$f"); done
+VER="dist-$(node -e 'const c=require("crypto"),fs=require("fs"),h=c.createHash("md5");for(const f of process.argv.slice(1))h.update(fs.readFileSync(f));process.stdout.write(h.digest("hex").slice(0,16))' "${ENGINE_FILES[@]}")"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/$VER"
