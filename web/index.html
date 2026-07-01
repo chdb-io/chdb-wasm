@@ -583,14 +583,14 @@
 
     // ---------- SQL execution (live progress line; Ctrl+C cancels on the mt build) ----------
     function progressBar(pct) { var W = 30, f = Math.max(0, Math.min(W, Math.floor(pct / 100 * W))); return "█".repeat(f) + "░".repeat(W - f); }
-    function formatProgress(p, rateSecs, spinner) {
+    function formatProgress(p, rateSecs, spinner, barPct) {
       var s = "↑ Progress: " + fmtQty(p.readRows) + " rows, " + fmtBytes(p.readBytes) +
               " (" + fmtQty(rateSecs > 0 ? p.readRows / rateSecs : 0) + " rows/s., " + fmtBytes(rateSecs > 0 ? p.readBytes / rateSecs : 0) + "/s.)";
       if (p.memoryUsage) s += " (" + fmtBytesBin(p.memoryUsage) + " RAM)";
-      // Cap at 99% while running: for remote sources (url/s3), readRows can hit
-      // totalRowsToRead long before the download/decompress finishes, so a 100% bar would
-      // sit there "done" for seconds. The result appearing (progress line removed) is 100%.
-      if (p.totalRowsToRead > 0) { var pct = Math.min(99, p.readRows / p.totalRowsToRead * 100); s += "  " + progressBar(pct) + " " + pct.toFixed(0) + "%"; }
+      // Show the bar once a total is known and keep it (capped at 99%, non-decreasing) even
+      // if a later tick reports totalRowsToRead=0 — otherwise the bar appears at 99% and then
+      // vanishes mid-query (some url/s3 reads report a total, then stop reporting one).
+      if (barPct !== null) s += "  " + progressBar(barPct) + " " + barPct.toFixed(0) + "%";
       s += "  " + spinner;
       return s;
     }
@@ -600,7 +600,7 @@
       if (!stmts.length) return;
       busy = true; cancelled = false;
       var SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
-      var progBlock = null, t0 = 0, lastP = null, lastRateSecs = 0, spin = 0, timer = null;
+      var progBlock = null, t0 = 0, lastP = null, lastRateSecs = 0, spin = 0, timer = null, barPct = null;
       var now = function () { return typeof performance !== "undefined" ? performance.now() : Date.now(); };
       // Repaint on a timer, not only on engine ticks: some queries (e.g. a remote download)
       // emit one tick then go quiet, which would freeze the line. The timer advances a spinner
@@ -610,19 +610,19 @@
         if (!lastP) return;
         var atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
         if (!progBlock) { progBlock = document.createElement("div"); progBlock._line = makeLine("progress-line"); progBlock.appendChild(progBlock._line); scrollback.appendChild(progBlock); }
-        progBlock._line.textContent = formatProgress(lastP, lastRateSecs, SPINNER[spin % SPINNER.length]);
+        progBlock._line.textContent = formatProgress(lastP, lastRateSecs, SPINNER[spin % SPINNER.length], barPct);
         spin++;
         // Stick to the bottom only if already there AND nothing is selected — otherwise the
         // per-tick scroll would fight a drag-select (or yank a user who scrolled up to read).
         var sel = window.getSelection && window.getSelection();
         if (atBottom && (!sel || sel.isCollapsed)) scrollToBottom();
       }
-      function showProgress(p) { lastP = p; lastRateSecs = (now() - t0) / 1000; paint(); }
+      function showProgress(p) { lastP = p; lastRateSecs = (now() - t0) / 1000; if (p.totalRowsToRead > 0) { var pc = Math.min(99, p.readRows / p.totalRowsToRead * 100); if (barPct === null || pc > barPct) barPct = pc; } paint(); }
       function clearProgress() { if (timer) { clearInterval(timer); timer = null; } if (progBlock && progBlock.parentNode) progBlock.parentNode.removeChild(progBlock); progBlock = null; lastP = null; }
       try {
         for (var i = 0; i < stmts.length; i++) {
           var isLast = (i === stmts.length - 1);
-          t0 = now(); lastP = null; lastRateSecs = 0; spin = 0; timer = setInterval(paint, 100);
+          t0 = now(); lastP = null; lastRateSecs = 0; spin = 0; barPct = null; timer = setInterval(paint, 100);
           var res = await conn.query(stmts[i], isLast ? "PrettyCompact" : "Null", { onProgress: showProgress });
           clearProgress();
           if (isLast) appendResult(res, stmts[i]);
