@@ -171,7 +171,7 @@
     text-overflow: ellipsis;
   }
 
-  button.icon-btn {
+  .icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -182,10 +182,11 @@
     background: transparent;
     color: var(--text);
     cursor: pointer;
+    text-decoration: none;
     transition: background 120ms ease, border-color 120ms ease;
   }
-  button.icon-btn:hover { background: var(--sel); border-color: var(--accent-text); }
-  button.icon-btn:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+  .icon-btn:hover { background: var(--sel); border-color: var(--accent-text); }
+  .icon-btn:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
   .icon { width: 18px; height: 18px; display: none; }
   :root[data-theme="dark"] .icon-sun { display: inline-block; }
   :root[data-theme="light"] .icon-moon { display: inline-block; }
@@ -312,6 +313,11 @@
     </div>
     <div class="title"><span class="accent">chDB</span> <span class="rest">SQL Shell</span></div>
     <div class="group">
+      <a class="icon-btn" href="https://github.com/chdb-io/chdb" target="_blank" rel="noopener noreferrer" aria-label="chDB on GitHub" title="chDB on GitHub">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
+        </svg>
+      </a>
       <button type="button" class="icon-btn" id="theme-toggle" aria-label="Toggle light / dark theme" title="Toggle theme">
         <svg class="icon icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <circle cx="12" cy="12" r="4"></circle>
@@ -576,12 +582,16 @@
     }
 
     // ---------- SQL execution (live progress line; Ctrl+C cancels on the mt build) ----------
-    function progressBar(pct) { var W = 30, f = Math.max(0, Math.min(W, Math.round(pct / 100 * W))); return "█".repeat(f) + "░".repeat(W - f); }
-    function formatProgress(p, secs) {
+    function progressBar(pct) { var W = 30, f = Math.max(0, Math.min(W, Math.floor(pct / 100 * W))); return "█".repeat(f) + "░".repeat(W - f); }
+    function formatProgress(p, rateSecs, spinner, barPct) {
       var s = "↑ Progress: " + fmtQty(p.readRows) + " rows, " + fmtBytes(p.readBytes) +
-              " (" + fmtQty(secs > 0 ? p.readRows / secs : 0) + " rows/s., " + fmtBytes(secs > 0 ? p.readBytes / secs : 0) + "/s.)";
+              " (" + fmtQty(rateSecs > 0 ? p.readRows / rateSecs : 0) + " rows/s., " + fmtBytes(rateSecs > 0 ? p.readBytes / rateSecs : 0) + "/s.)";
       if (p.memoryUsage) s += " (" + fmtBytesBin(p.memoryUsage) + " RAM)";
-      if (p.totalRowsToRead > 0) { var pct = Math.min(100, p.readRows / p.totalRowsToRead * 100); s += "  " + progressBar(pct) + " " + pct.toFixed(0) + "%"; }
+      // Show the bar once a total is known and keep it (capped at 99%, non-decreasing) even
+      // if a later tick reports totalRowsToRead=0 — otherwise the bar appears at 99% and then
+      // vanishes mid-query (some url/s3 reads report a total, then stop reporting one).
+      if (barPct !== null) s += "  " + progressBar(barPct) + " " + barPct.toFixed(0) + "%";
+      s += "  " + spinner;
       return s;
     }
     async function executeSql(buffer) {
@@ -589,23 +599,30 @@
       var stmts = buffer.split(";").map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
       if (!stmts.length) return;
       busy = true; cancelled = false;
-      var progBlock = null, t0 = 0;
+      var SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏";
+      var progBlock = null, t0 = 0, lastP = null, lastRateSecs = 0, spin = 0, timer = null, barPct = null;
       var now = function () { return typeof performance !== "undefined" ? performance.now() : Date.now(); };
-      function showProgress(p) {
+      // Repaint on a timer, not only on engine ticks: some queries (e.g. a remote download)
+      // emit one tick then go quiet, which would freeze the line. The timer advances a spinner
+      // so it stays visibly alive; rows/bytes/% keep the last engine-reported values, and the
+      // rate uses the last tick's elapsed (frozen) so it doesn't drift down between ticks.
+      function paint() {
+        if (!lastP) return;
         var atBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
         if (!progBlock) { progBlock = document.createElement("div"); progBlock._line = makeLine("progress-line"); progBlock.appendChild(progBlock._line); scrollback.appendChild(progBlock); }
-        // Engine per-tick elapsedNs is unset in this build, so time the rate from the wall clock.
-        progBlock._line.textContent = formatProgress(p, (now() - t0) / 1000);
+        progBlock._line.textContent = formatProgress(lastP, lastRateSecs, SPINNER[spin % SPINNER.length], barPct);
+        spin++;
         // Stick to the bottom only if already there AND nothing is selected — otherwise the
         // per-tick scroll would fight a drag-select (or yank a user who scrolled up to read).
         var sel = window.getSelection && window.getSelection();
         if (atBottom && (!sel || sel.isCollapsed)) scrollToBottom();
       }
-      function clearProgress() { if (progBlock && progBlock.parentNode) progBlock.parentNode.removeChild(progBlock); progBlock = null; }
+      function showProgress(p) { lastP = p; lastRateSecs = (now() - t0) / 1000; if (p.totalRowsToRead > 0) { var pc = Math.min(99, p.readRows / p.totalRowsToRead * 100); if (barPct === null || pc > barPct) barPct = pc; } paint(); }
+      function clearProgress() { if (timer) { clearInterval(timer); timer = null; } if (progBlock && progBlock.parentNode) progBlock.parentNode.removeChild(progBlock); progBlock = null; lastP = null; }
       try {
         for (var i = 0; i < stmts.length; i++) {
           var isLast = (i === stmts.length - 1);
-          t0 = now();
+          t0 = now(); lastP = null; lastRateSecs = 0; spin = 0; barPct = null; timer = setInterval(paint, 100);
           var res = await conn.query(stmts[i], isLast ? "PrettyCompact" : "Null", { onProgress: showProgress });
           clearProgress();
           if (isLast) appendResult(res, stmts[i]);
