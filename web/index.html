@@ -630,10 +630,12 @@
         // Remote reads (url/s3/parquet) briefly report totalRowsToRead≈readRows (ratio ~100%) then
         // drop it to 0 — that isn't real progress, so a bar there would just sit at 99% the whole
         // query. A genuine scan's first ratio is near 0% and climbs, so only engage the bar when the
-        // first credible ratio is well under 100%; otherwise stay in the indeterminate (spinner) mode.
+        // first credible ratio is no more than halfway (≤ 50%); otherwise stay indeterminate (spinner
+        // only). Erring low means the worst case is a spinner where a bar was possible — never a fake
+        // near-100% bar.
         if (p.totalRowsToRead > 0) {
           var pc = p.readRows / p.totalRowsToRead * 100;
-          if (barPct === null) { if (pc <= 90) barPct = Math.min(99, pc); }
+          if (barPct === null) { if (pc <= 50) barPct = Math.min(99, pc); }
           else barPct = Math.min(99, Math.max(barPct, pc));
         }
         paint();
