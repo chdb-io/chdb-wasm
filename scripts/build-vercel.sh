@@ -25,11 +25,11 @@ WEB="${2:-web}"
 OUT="${3:-out}"
 JS="index.js worker.js async.js bindings.js protocol.js status.js platform.js"
 
-# Content-hashed dir name covering the mt engine files, so any engine change busts the
-# immutable cache. 16 hex chars (64 bits) keep collisions negligible.
-HASH_INPUT=""
-for f in $JS chdb.mjs chdb.wasm; do HASH_INPUT="$HASH_INPUT $DIST/$f"; done
-VER="dist-$(cat $HASH_INPUT | md5sum | cut -c1-16)"
+# Cache-busting dir name = the installed engine's version. npm versions are immutable, so
+# the version fully identifies the engine bytes: a new engine => new version => new dir =>
+# fresh fetch, with no stale-cache risk. Computed with node (always present in a Vercel
+# build) rather than md5sum, which the build image does not ship.
+VER="dist-$(node -pe "JSON.parse(require('fs').readFileSync('$(dirname "$DIST")/package.json','utf8')).version")"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/$VER"
