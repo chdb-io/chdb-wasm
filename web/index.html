@@ -591,8 +591,10 @@
       // (capped at 99%, non-decreasing) even if a later tick reports totalRowsToRead=0 — otherwise
       // it would vanish mid-query when a url/s3 read stops reporting a total. When no credible total
       // is ever seen, barPct stays null and we show the indeterminate form (counters + spinner only).
+      // A climbing bar (and the live counters) already signal the query is alive, so the spinner is
+      // only shown in the indeterminate case where it's the sole liveness cue.
       if (barPct !== null) s += "  " + progressBar(barPct) + " " + barPct.toFixed(0) + "%";
-      s += "  " + spinner;
+      else s += "  " + spinner;
       return s;
     }
     async function executeSql(buffer) {
