@@ -926,15 +926,26 @@
     document.addEventListener("click", closeExamples);
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeExamples(); });
 
-    // Ctrl+C cancels a running query (mt build). With a text selection, let it copy instead.
+    // Ctrl+C cancels a running query (mt build), or clears the typed input when idle — the
+    // terminal's "abandon the current line" muscle memory. With a text selection (in the page
+    // or inside the input), let it copy instead.
     document.addEventListener("keydown", function (e) {
-      if (!busy || !e.ctrlKey || e.metaKey || e.altKey || (e.key !== "c" && e.key !== "C")) return;
+      if (!e.ctrlKey || e.metaKey || e.altKey || (e.key !== "c" && e.key !== "C")) return;
       var sel = window.getSelection && window.getSelection();
       if (sel && !sel.isCollapsed) return;   // a selection is present -> let Ctrl+C copy
+      if (busy) {
+        e.preventDefault();
+        cancelled = true;
+        try { conn.cancel(); }
+        catch (err) { printLine("Cancellation requires the multi-threaded build; this page is single-threaded.", "muted-line"); }
+        return;
+      }
+      // window.getSelection() doesn't see a selection inside a textarea, so check it directly.
+      if (composing || input.value === "" || input.selectionStart !== input.selectionEnd) return;
       e.preventDefault();
-      cancelled = true;
-      try { conn.cancel(); }
-      catch (err) { printLine("Cancellation requires the multi-threaded build; this page is single-threaded.", "muted-line"); }
+      input.value = ""; draft = ""; historyIndex = -1;
+      autoResize(); positionCaret(); hlLayer.textContent = "";
+      focusInput();
     });
 
     // ---------- Engine connect / boot ----------
