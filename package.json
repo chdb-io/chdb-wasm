@@ -15,6 +15,6 @@
     "build": "bash scripts/build-vercel.sh node_modules/chdb-wasm/dist web out"
   },
   "dependencies": {
-    "chdb-wasm": "0.2.0"
+    "chdb-wasm": "0.3.0"
   }
 }
