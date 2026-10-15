@@ -737,7 +737,7 @@
       window.requestAnimationFrame(function () {
         var len = input.value.length;
         try { input.setSelectionRange(len, len); } catch (e) {}
-        autoResize(); positionCaret(); scheduleHighlight(); scrollToBottom();
+        autoResize(); positionCaret(); updateHighlight(); scrollToBottom();
       });
     }
 
@@ -745,7 +745,7 @@
     // On each edit, ask the engine for highlight ranges via highlightQuery() and paint colored
     // spans into an overlay aligned 1:1 behind the transparent textarea. highlightQuery never
     // throws on partial/invalid SQL, so it is safe to call on every keystroke while typing.
-    var hlSeq = 0, hlTimer = null, composing = false;
+    var hlSeq = 0, composing = false;
     function escHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
     // highlightQuery offsets are UTF-8 byte positions; map them to UTF-16 string indices.
     function byteToCharIndex(str) {
@@ -791,6 +791,7 @@
       }
       if (pos < str.length) html += emitGap(str.slice(pos), br);
       el.innerHTML = html;
+      return html;
     }
     // Ask the engine for highlight ranges. Resolves to ranges[] or null; never rejects.
     function fetchHighlight(sql) {
@@ -800,20 +801,26 @@
         try { var r = JSON.parse(res.text()).data[0][0]; return Array.isArray(r) ? r : null; } catch (e) { return null; }
       }).catch(function () { return null; });
     }
-    function highlightNow() {
+    // cache last highlight, reuse if possible (prefix match or suffix match)
+    var lastHlValue = "", lastHlHtml = "", lastHlRanges = null;
+    function updateHighlight() {
       var value = input.value;
-      if (value === "") { hlLayer.textContent = ""; return; }
+      if (value === "") { hlLayer.textContent = ""; lastHlValue = ""; lastHlHtml = ""; lastHlRanges = null; return; }
+      if (lastHlHtml && value.length >= lastHlValue.length && value.slice(0, lastHlValue.length) === lastHlValue) {
+        hlLayer.innerHTML = lastHlHtml + escHtml(value.slice(lastHlValue.length));
+      } else if (lastHlRanges && value.length < lastHlValue.length && lastHlValue.slice(0, value.length) === value) {
+        renderRanges(hlLayer, value, lastHlRanges);
+      } else {
+        hlLayer.textContent = value;
+      }
       if (composing) return;
       var seq = ++hlSeq;
       fetchHighlight(value).then(function (ranges) {
         if (seq !== hlSeq || input.value !== value || !ranges) return;   // a newer edit superseded this one
-        renderRanges(hlLayer, value, ranges);
+        lastHlValue = value;
+        lastHlRanges = ranges;
+        lastHlHtml = renderRanges(hlLayer, value, ranges);
       });
-    }
-    function scheduleHighlight() {
-      hlLayer.textContent = input.value;     // show typed text at once (uncolored); recolor right after
-      if (hlTimer) clearTimeout(hlTimer);
-      hlTimer = setTimeout(highlightNow, 30);
     }
 
     // Drop an example query into the prompt; press Enter to run it.
@@ -830,11 +837,11 @@
       draft = input.value;
       autoResize();
       positionCaret();
-      scheduleHighlight();
+      updateHighlight();
       scrollToBottom();
     });
     input.addEventListener("compositionstart", function () { composing = true; inputField.classList.add("composing"); });
-    input.addEventListener("compositionend", function () { composing = false; inputField.classList.remove("composing"); scheduleHighlight(); });
+    input.addEventListener("compositionend", function () { composing = false; inputField.classList.remove("composing"); updateHighlight(); });
     input.addEventListener("keyup", positionCaret);
     input.addEventListener("select", positionCaret);
     // Real-time caret tracking: fires on every caret move (arrow keys / Home / End,
